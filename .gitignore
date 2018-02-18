@@ -1,1 +1,4 @@
 *.pyc
+.DS_Store
+data/
+events.out.tfevents.*
