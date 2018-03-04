@@ -210,18 +210,18 @@ class BiDAFAttn(object):
         """
         with vs.variable_scope("BiDAFAttn"):
             # Calculate S
-            W_sim = tf.get_variable("W_sim", self.value_vec_size * 6, initializer=tf.contrib.layers.xavier_initializer(0.0))
+            W_sim = tf.get_variable("W_sim", self.value_vec_size * 3, initializer=tf.contrib.layers.xavier_initializer(0.0))
 
             # (batch_size, num_keys)
-            keys_dot = tf.tensordot(W_sim[:self.value_vec_size * 2], keys, (0, 2))
+            keys_dot = tf.tensordot(W_sim[:self.value_vec_size], keys, (0, 2))
 
             # (batch_size, num_values)
-            values_dot = tf.tensordot(W_sim[self.value_vec_size * 2:self.value_vec_size * 4], values, (0, 2))
+            values_dot = tf.tensordot(W_sim[self.value_vec_size:self.value_vec_size * 2], values, (0, 2))
             # (batch_size, num_keys, num_values, value_vec_size) = (batch_size, num_keys, 1, value_vec_size) (batch_size, 1, num_values, value_vec_size)
             key_value_mul = tf.expand_dims(keys, 2) * tf.expand_dims(values, 1)
             # (batch_size, num_keys, num_values, 1)
 
-            key_value_mul_dot = tf.tensordot(W_sim[self.value_vec_size * 4:self.value_vec_size * 6], key_value_mul, (0, 3))
+            key_value_mul_dot = tf.tensordot(W_sim[self.value_vec_size * 2:self.value_vec_size * 3], key_value_mul, (0, 3))
 
             # S = (batch_size, num_keys, num_values)
             # S = (B * N * M)
