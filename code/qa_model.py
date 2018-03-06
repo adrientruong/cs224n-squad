@@ -326,7 +326,7 @@ class QAModel(object):
             list_tuples_start.append((best_p, max_end_index))
         list_tuples_start = np.array(list_tuples_start)
         index_of_best_prob_before_inversion = np.argmax(list_tuples_start[:,0])
-        best_start = len(start_dist_1d) - index_of_best_prob_before_inversion
+        best_start = len(start_dist_1d) - index_of_best_prob_before_inversion - 1
         best_end = list_tuples_start[index_of_best_prob_before_inversion][1]
         return best_start, best_end
 
