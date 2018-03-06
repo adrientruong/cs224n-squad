@@ -319,9 +319,9 @@ class QAModel(object):
         max_end =  0
         max_end_index = -1
         for i in range(len(start_dist_1d)-1, -1, -1):
-            if end_dist_1d[i] > max_end:
-                max_end = end_dist_1d[i]
-                max_end_index = i
+            if end_dist_1d[i] > max_end or max_end_index - i > 15:
+                max_end_index = np.argmax(end_dist_1d[i:i+15])
+                max_end = end_dist_1d[max_end_index]
             best_p = start_dist_1d[i] * max_end
             list_tuples_start.append((best_p, max_end_index))
         list_tuples_start = np.array(list_tuples_start)
