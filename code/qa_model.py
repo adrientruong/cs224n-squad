@@ -295,13 +295,40 @@ class QAModel(object):
             The most likely start and end positions for each example in the batch.
         """
         # Get start_dist and end_dist, both shape (batch_size, context_len)
-        start_dist, end_dist = self.get_prob_dists(session, batch)
-
+        start_dists, end_dists = self.get_prob_dists(session, batch)
+        start_pos = []
+        end_pos = []
+        for  start_dist, end_dist in zip(start_dists, end_dists):
+            best_start, best_end = self.get_start_end_pos_single_example(start_dist, end_dist)
+            start_pos.append(best_start)
+            end_pos.append(best_end)
         # Take argmax to get start_pos and end_post, both shape (batch_size)
-        start_pos = np.argmax(start_dist, axis=1)
-        end_pos = np.argmax(end_dist, axis=1)
+
+        start_pos = np.array(start_pos, dtype= np.int64)
+        end_pos = np.array(end_pos, dtype= np.int64)
+
+
 
         return start_pos, end_pos
+
+
+
+
+    def get_start_end_pos_single_example(self, start_dist_1d, end_dist_1d):
+        list_tuples_start = []
+        max_end =  0
+        max_end_index = -1
+        for i in range(len(start_dist_1d)-1, -1, -1):
+            if end_dist_1d[i] > max_end:
+                max_end = end_dist_1d[i]
+                max_end_index = i
+            best_p = start_dist_1d[i] * max_end
+            list_tuples_start.append((best_p, max_end_index))
+        list_tuples_start = np.array(list_tuples_start)
+        index_of_best_prob_before_inversion = np.argmax(list_tuples_start[:,0])
+        best_start = len(start_dist_1d) - index_of_best_prob_before_inversion
+        best_end = list_tuples_start[index_of_best_prob_before_inversion][1]
+        return best_start, best_end
 
 
     def get_dev_loss(self, session, dev_context_path, dev_qn_path, dev_ans_path):
