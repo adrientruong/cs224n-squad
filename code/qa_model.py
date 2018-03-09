@@ -204,32 +204,7 @@ class QAModel(object):
             self.loss = self.loss_start + self.loss_end
             tf.summary.scalar('loss', self.loss)
 
-
-    def run_train_iter(self, session, batch, summary_writer):
-        """
-        This performs a single training iteration (forward pass, loss computation, backprop, parameter update)
-
-        Inputs:
-          session: TensorFlow session
-          batch: a Batch object
-          summary_writer: for Tensorboard
-
-        Returns:
-          loss: The loss (averaged across the batch) for this batch.
-          global_step: The current number of training iterations we've done
-          param_norm: Global norm of the parameters
-          gradient_norm: Global norm of the gradients
-        """
-        # Match up our input data with the placeholders
-        input_feed = {}
-        input_feed[self.context_ids] = batch.context_ids
-        input_feed[self.context_mask] = batch.context_mask
-        input_feed[self.qn_ids] = batch.qn_ids
-        input_feed[self.qn_mask] = batch.qn_mask
-        input_feed[self.ans_span] = batch.ans_span
-        input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout
-
-        # Calculate matches
+    def compute_extra_context_features(self, batch):
         context_features = []
         tokens = set()
         for question, context in zip(batch.qn_tokens, batch.context_tokens):
@@ -260,8 +235,34 @@ class QAModel(object):
 
             features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
             context_features.append(features)
+        return context_features
 
-        input_feed[self.extra_context_features] = context_features
+    def run_train_iter(self, session, batch, summary_writer):
+        """
+        This performs a single training iteration (forward pass, loss computation, backprop, parameter update)
+
+        Inputs:
+          session: TensorFlow session
+          batch: a Batch object
+          summary_writer: for Tensorboard
+
+        Returns:
+          loss: The loss (averaged across the batch) for this batch.
+          global_step: The current number of training iterations we've done
+          param_norm: Global norm of the parameters
+          gradient_norm: Global norm of the gradients
+        """
+        # Match up our input data with the placeholders
+        input_feed = {}
+        input_feed[self.context_ids] = batch.context_ids
+        input_feed[self.context_mask] = batch.context_mask
+        input_feed[self.qn_ids] = batch.qn_ids
+        input_feed[self.qn_mask] = batch.qn_mask
+        input_feed[self.ans_span] = batch.ans_span
+        input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout
+
+        # Calculate matches
+        input_feed[self.extra_context_features] = self.compute_extra_context_features(batch)
 
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]
@@ -293,6 +294,7 @@ class QAModel(object):
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
+        input_feed[self.extra_context_features] = self.compute_extra_context_features(batch)
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.loss]
@@ -318,6 +320,7 @@ class QAModel(object):
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
+        input_feed[self.extra_context_features] = self.compute_extra_context_features(batch)
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.probdist_start, self.probdist_end]
