@@ -235,6 +235,8 @@ class QAModel(object):
 
             features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
             context_features.append(features)
+        context_features = np.array(context_features)
+        
         return context_features
 
     def run_train_iter(self, session, batch, summary_writer):
