@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import unicode_literals
 
 import time
 import logging
@@ -26,6 +27,9 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import embedding_ops
+
+import spacy
+nlp = spacy.load('en')
 
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
@@ -91,6 +95,7 @@ class QAModel(object):
         self.qn_ids = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
         self.qn_mask = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
         self.ans_span = tf.placeholder(tf.int32, shape=[None, 2])
+        self.extra_context_features = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, 2])
 
         # Add a placeholder to feed in the keep probability (for dropout).
         # This is necessary so that we can instruct the model to use dropout when training, but not when testing
@@ -113,8 +118,15 @@ class QAModel(object):
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
             self.context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
+            self.context_embs = tf.concat([self.context_embs, tf.cast(self.extra_context_features, tf.float32)], axis=2)
             self.qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
 
+            # need to pad because RNN encoder shares weights
+            padding = tf.constant([[0, 0], [0, 0], [0, self.extra_context_features.shape[2].value]])
+            self.qn_embs = tf.pad(self.qn_embs, padding)
+
+            print('final context emb shape:', self.context_embs.shape)
+            print('qn embs:', self.qn_embs.shape)
 
     def build_graph(self):
         """Builds the main part of the graph for the model, starting from the input embeddings to the final distributions for the answer span.
@@ -219,6 +231,27 @@ class QAModel(object):
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
         input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout
+
+        # Calculate matches
+        context_features = []
+        for question, context in zip(batch.qn_tokens, batch.context_tokens):
+            words_in_q = set(question)
+            question_lemmas = set([nlp(q.decode('utf-8'))[0].lemma_ for q in question])
+            context_lemmas = [nlp(c.decode('utf-8'))[0].lemma_ for c in context]
+            exact_match = [int(c in words_in_q) for c in context]
+            lemma_match = [int(c in question_lemmas) for c in context_lemmas]
+
+            # add padding
+            if len(context) < max_context_len:
+                to_pad = self.FLAGS.context_len - len(context)
+                exact_match.extend([0 for _ in range(to_pad)])
+                lemma_match.extend([0 for _ in range(to_pad)])
+
+            features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
+            context_features.append(features)
+        print('context features shape:', np.array(context_features).shape)
+
+        input_feed[self.extra_context_features] = context_features
 
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]

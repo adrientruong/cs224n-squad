@@ -21,6 +21,9 @@ pip install -r requirements.txt
 python -m nltk.downloader punkt
 python -m nltk.downloader perluniprops
 
+# download spacy
+python -m spacy download en
+
 # Download and preprocess SQuAD data and save in data/
 mkdir -p $DATA_DIR
 rm -rf $DATA_DIR
