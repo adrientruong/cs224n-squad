@@ -174,7 +174,8 @@ def preprocess_and_write(dataset, tier, out_dir):
     num_mappingprob, num_tokenprob, num_spanalignprob = 0, 0, 0
     examples = []
 
-    for articles_id in tqdm(range(len(dataset['data'])), desc="Preprocessing {}".format(tier)):
+    #for articles_id in tqdm(range(len(dataset['data'])), desc="Preprocessing {}".format(tier)):
+    for articles_id in tqdm(range(3), desc="Preprocessing {}".format(tier)):
 
         article_paragraphs = dataset['data'][articles_id]['paragraphs']
         for pid in range(len(article_paragraphs)):
@@ -241,7 +242,7 @@ def preprocess_and_write(dataset, tier, out_dir):
                 #print('start question token')
                 question_token_lemmas = set([d[0].lemma_ for d in nlp.pipe(question_tokens)])
                 #print('end question token')
-                exact_match = [str(int(c in question_tokens_set)) for c in context]
+                exact_match = [str(int(c in question_tokens_set)) for c in context_tokens]
                 lemma_match = [str(int(c in question_token_lemmas)) for c in context_token_lemmas]
                 extra_context_features = [' '.join([em, lm]) for em, lm in zip(exact_match, lemma_match)]
 

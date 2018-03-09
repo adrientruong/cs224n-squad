@@ -230,27 +230,8 @@ class QAModel(object):
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
-        input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout
-
-        # Calculate matches
-        context_features = []
-        for question, context in zip(batch.qn_tokens, batch.context_tokens):
-            words_in_q = set(question)
-            question_lemmas = set([nlp(q.decode('utf-8'))[0].lemma_ for q in question])
-            context_lemmas = [nlp(c.decode('utf-8'))[0].lemma_ for c in context]
-            exact_match = [int(c in words_in_q) for c in context]
-            lemma_match = [int(c in question_lemmas) for c in context_lemmas]
-
-            # add padding
-            if len(context) < self.FLAGS.context_len:
-                to_pad = self.FLAGS.context_len - len(context)
-                exact_match.extend([0 for _ in range(to_pad)])
-                lemma_match.extend([0 for _ in range(to_pad)])
-
-            features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
-            context_features.append(features)
-
-        input_feed[self.extra_context_features] = context_features
+        input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout      
+        input_feed[self.extra_context_features] = batch.extra_context_features
 
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]
@@ -278,6 +259,7 @@ class QAModel(object):
 
         input_feed = {}
         input_feed[self.context_ids] = batch.context_ids
+        input_feed[self.extra_context_features] = batch.extra_context_features
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
@@ -483,7 +465,7 @@ class QAModel(object):
         return f1_total, em_total
 
 
-    def train(self, session, train_context_path, train_qn_path, train_ans_path, dev_qn_path, dev_context_path, dev_ans_path):
+    def train(self, session, train_context_path, train_extra_context_path, train_qn_path, train_ans_path, dev_qn_path, dev_context_path, dev_extra_context_path, dev_ans_path):
         """
         Main training loop.
 
@@ -521,7 +503,8 @@ class QAModel(object):
             epoch_tic = time.time()
 
             # Loop over batches
-            for batch in get_batch_generator(self.word2id, train_context_path, train_qn_path, train_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True):
+
+            for batch in get_batch_generator(self.word2id, train_context_path, train_extra_context_path, train_qn_path, train_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True):
 
                 # Run training iteration
                 iter_tic = time.time()
@@ -550,7 +533,7 @@ class QAModel(object):
                 if global_step % self.FLAGS.eval_every == 0:
 
                     # Get loss for entire dev set and log to tensorboard
-                    dev_loss = self.get_dev_loss(session, dev_context_path, dev_qn_path, dev_ans_path)
+                    dev_loss = self.get_dev_loss(session, dev_context_path, dev_extra_context_path, dev_qn_path, dev_ans_path)
                     logging.info("Epoch %d, Iter %d, dev loss: %f" % (epoch, global_step, dev_loss))
                     write_summary(dev_loss, "dev/loss", summary_writer, global_step)
 
