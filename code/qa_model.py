@@ -29,7 +29,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import embedding_ops
 
 import spacy
-nlp = spacy.load('en')
+nlp = spacy.load('en', disable=['parser', 'ner', 'textcat'])
 
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
@@ -234,12 +234,26 @@ class QAModel(object):
 
         # Calculate matches
         context_features = []
+        tokens = set()
         for question, context in zip(batch.qn_tokens, batch.context_tokens):
-            words_in_q = set(question)
-            question_lemmas = set([nlp(q.decode('utf-8'))[0].lemma_ for q in question])
-            context_lemmas = [nlp(c.decode('utf-8'))[0].lemma_ for c in context]
-            exact_match = [int(c in words_in_q) for c in context]
+            tokens.update(question)
+            tokens.update(context)
+        tokens = [t.decode('utf-8') for t in tokens]
+        lemmas = [d[0].lemma_ for d in nlp.pipe(tokens)]
+        lemmas_by_token = dict(zip(tokens, lemmas))
+        for question, context in zip(batch.qn_tokens, batch.context_tokens):
+            question_set = set(question)
+            question_unicode = [q.decode('utf-8') for q in question]
+            context_unicode = [c.decode('utf-8') for c in context]
+            question_lemmas = [lemmas_by_token[q] for q in question_unicode]
+            context_lemmas = [lemmas_by_token[c] for c in context_unicode]
+            exact_match = [int(c in question_set) for c in context]
             lemma_match = [int(c in question_lemmas) for c in context_lemmas]
+
+            # print('question:', ' '.join(question))
+            # for c, lemma, em, lm in zip(context, context_lemmas, exact_match, lemma_match):
+            #     if em == 0 and lm == 1:
+            #         print('orig:', c, 'lemma:', lemma)
 
             # add padding
             if len(context) < self.FLAGS.context_len:
