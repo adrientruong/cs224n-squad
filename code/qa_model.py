@@ -242,14 +242,13 @@ class QAModel(object):
             lemma_match = [int(c in question_lemmas) for c in context_lemmas]
 
             # add padding
-            if len(context) < max_context_len:
+            if len(context) < self.FLAGS.context_len:
                 to_pad = self.FLAGS.context_len - len(context)
                 exact_match.extend([0 for _ in range(to_pad)])
                 lemma_match.extend([0 for _ in range(to_pad)])
 
             features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
             context_features.append(features)
-        print('context features shape:', np.array(context_features).shape)
 
         input_feed[self.extra_context_features] = context_features
 
