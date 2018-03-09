@@ -191,7 +191,7 @@ def preprocess_and_write(dataset, tier, out_dir):
             context = context.lower()
 
             #print('start context token')
-            context_token_lemmas = [d[0].lemma_ for d in nlp.pipe(context_tokens)]
+            context_token_lemmas = [nlp(c.decode('utf-8'))[0].lemma_ for c in context_tokens]
             #print('end context token')
 
             qas = article_paragraphs[pid]['qas'] # list of questions
@@ -239,7 +239,7 @@ def preprocess_and_write(dataset, tier, out_dir):
                 # preprocess extra context features
                 question_tokens_set = set(question_tokens)
                 #print('start question token')
-                question_token_lemmas = set([d[0].lemma_ for d in nlp.pipe(question_tokens)])
+                question_token_lemmas = set([nlp(q.decode('utf-8'))[0].lemma_ for q in question_tokens])
                 #print('end question token')
                 exact_match = [str(int(c in question_tokens_set)) for c in context]
                 lemma_match = [str(int(c in question_token_lemmas)) for c in context_token_lemmas]
