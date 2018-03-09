@@ -14,8 +14,6 @@
 
 """Downloads SQuAD train and dev sets, preprocesses and writes tokenized versions to file"""
 
-from __future__ import unicode_literals
-
 import os
 import sys
 import random
@@ -25,9 +23,6 @@ import nltk
 import numpy as np
 from tqdm import tqdm
 from six.moves.urllib.request import urlretrieve
-
-import spacy
-nlp = spacy.load('en', disable=['parser', 'ner', 'textcat'])
 
 reload(sys)
 sys.setdefaultencoding('utf8')
@@ -181,7 +176,6 @@ def preprocess_and_write(dataset, tier, out_dir):
 
             context = unicode(article_paragraphs[pid]['context']) # string
 
-
             # The following replacements are suggested in the paper
             # BidAF (Seo et al., 2016)
             context = context.replace("''", '" ')
@@ -189,10 +183,6 @@ def preprocess_and_write(dataset, tier, out_dir):
 
             context_tokens = tokenize(context) # list of strings (lowercase)
             context = context.lower()
-
-            #print('start context token')
-            context_token_lemmas = [nlp(c.decode('utf-8'))[0].lemma_ for c in context_tokens]
-            #print('end context token')
 
             qas = article_paragraphs[pid]['qas'] # list of questions
 
@@ -236,16 +226,7 @@ def preprocess_and_write(dataset, tier, out_dir):
                     num_tokenprob += 1
                     continue # skip this question/answer pair
 
-                # preprocess extra context features
-                question_tokens_set = set(question_tokens)
-                #print('start question token')
-                question_token_lemmas = set([nlp(q.decode('utf-8'))[0].lemma_ for q in question_tokens])
-                #print('end question token')
-                exact_match = [str(int(c in question_tokens_set)) for c in context]
-                lemma_match = [str(int(c in question_token_lemmas)) for c in context_token_lemmas]
-                extra_context_features = [' '.join([em, lm]) for em, lm in zip(exact_match, lemma_match)]
-
-                examples.append((' '.join(context_tokens), ' '.join(extra_context_features), ' '.join(question_tokens), ' '.join(ans_tokens), ' '.join([str(ans_start_wordloc), str(ans_end_wordloc)])))
+                examples.append((' '.join(context_tokens), ' '.join(question_tokens), ' '.join(ans_tokens), ' '.join([str(ans_start_wordloc), str(ans_end_wordloc)])))
 
                 num_exs += 1
 
@@ -259,17 +240,15 @@ def preprocess_and_write(dataset, tier, out_dir):
     np.random.shuffle(indices)
 
     with open(os.path.join(out_dir, tier +'.context'), 'w') as context_file,  \
-         open(os.path.join(out_dir, tier +'.extracontext'), 'w') as extra_context_file, \
          open(os.path.join(out_dir, tier +'.question'), 'w') as question_file,\
          open(os.path.join(out_dir, tier +'.answer'), 'w') as ans_text_file, \
          open(os.path.join(out_dir, tier +'.span'), 'w') as span_file:
 
         for i in indices:
-            (context, extra_context_features, question, answer, answer_span) = examples[i]
+            (context, question, answer, answer_span) = examples[i]
 
             # write tokenized data to file
             write_to_file(context_file, context)
-            write_to_file(extra_context_file, extra_context_features)
             write_to_file(question_file, question)
             write_to_file(ans_text_file, answer)
             write_to_file(span_file, answer_span)
