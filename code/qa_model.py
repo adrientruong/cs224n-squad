@@ -125,9 +125,6 @@ class QAModel(object):
             padding = tf.constant([[0, 0], [0, 0], [0, self.extra_context_features.shape[2].value]])
             self.qn_embs = tf.pad(self.qn_embs, padding)
 
-            print('final context emb shape:', self.context_embs.shape)
-            print('qn embs:', self.qn_embs.shape)
-
     def build_graph(self):
         """Builds the main part of the graph for the model, starting from the input embeddings to the final distributions for the answer span.
 
