@@ -128,11 +128,9 @@ def main(unused_argv):
     train_context_path = os.path.join(FLAGS.data_dir, "train.context")
     train_qn_path = os.path.join(FLAGS.data_dir, "train.question")
     train_ans_path = os.path.join(FLAGS.data_dir, "train.span")
-    train_extra_context_path = os.path.join(FLAGS.data_dir, "train.extracontext")
     dev_context_path = os.path.join(FLAGS.data_dir, "dev.context")
     dev_qn_path = os.path.join(FLAGS.data_dir, "dev.question")
     dev_ans_path = os.path.join(FLAGS.data_dir, "dev.span")
-    dev_extra_context_path = os.path.join(FLAGS.data_dir, "dev.extracontext")
 
     # Initialize model
     qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix)
@@ -164,7 +162,7 @@ def main(unused_argv):
             initialize_model(sess, qa_model, FLAGS.train_dir, expect_exists=False)
 
             # Train
-            qa_model.train(sess, train_context_path, train_extra_context_path, train_qn_path, train_ans_path, dev_qn_path, dev_context_path, dev_extra_context_path, dev_ans_path)
+            qa_model.train(sess, train_context_path, train_qn_path, train_ans_path, dev_qn_path, dev_context_path, dev_ans_path)
 
 
     elif FLAGS.mode == "show_examples":
