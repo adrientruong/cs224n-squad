@@ -72,11 +72,13 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
         # Note: truncating context_ids may truncate the correct answer, meaning that it's impossible for your model to get the correct answer on this example!
         if len(qn_ids) > question_len:
             qn_ids = qn_ids[:question_len]
+	    qn_tokens = qn_tokens[:question_len]
         if len(context_ids) > context_len:
             context_ids = context_ids[:context_len]
+	    context_tokens = context_tokens[:context_len]
 
         # Add to list of examples
-        examples.append((qn_uuid, context_tokens, context_ids, qn_ids))
+        examples.append((qn_uuid, context_tokens, context_ids, qn_tokens, qn_ids))
 
         # Stop if you've got a batch
         if len(examples) == batch_size:
@@ -87,9 +89,9 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
 
     # Make into batches
     for batch_start in xrange(0, len(examples), batch_size):
-        uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch = zip(*examples[batch_start:batch_start + batch_size])
+        uuids_batch, context_tokens_batch, context_ids_batch, qn_tokens_batch, qn_ids_batch = zip(*examples[batch_start:batch_start + batch_size])
 
-        batches.append((uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch))
+        batches.append((uuids_batch, context_tokens_batch, context_ids_batch, qn_tokens_batch, qn_ids_batch))
 
     return
 
@@ -119,7 +121,7 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
             break
 
         # Get next batch. These are all lists length batch_size
-        (uuids, context_tokens, context_ids, qn_ids) = batches.pop(0)
+        (uuids, context_tokens, context_ids, qn_tokens, qn_ids) = batches.pop(0)
 
         # Pad context_ids and qn_ids
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
@@ -134,7 +136,7 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
         context_mask = (context_ids != PAD_ID).astype(np.int32)
 
         # Make into a Batch object
-        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens=None, ans_span=None, ans_tokens=None, uuids=uuids)
+        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span=None, ans_tokens=None, uuids=uuids)
 
         yield batch
 
