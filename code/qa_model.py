@@ -36,6 +36,8 @@ from data_batcher import get_batch_generator
 from pretty_print import print_example
 from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn
 
+from timeit import default_timer as timer
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -56,6 +58,9 @@ class QAModel(object):
         self.FLAGS = FLAGS
         self.id2word = id2word
         self.word2id = word2id
+
+        self.lemmatized_tokens = set()
+        self.lemmas_by_token = {}
 
         # Add all parts of the graph
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
@@ -204,21 +209,31 @@ class QAModel(object):
             self.loss = self.loss_start + self.loss_end
             tf.summary.scalar('loss', self.loss)
 
-    def compute_extra_context_features(self, batch):
-        context_features = []
+    def compute_lemmas(self, batch):
         tokens = set()
         for question, context in zip(batch.qn_tokens, batch.context_tokens):
             tokens.update(question)
             tokens.update(context)
-        tokens = [t.decode('utf-8') for t in tokens]
-        lemmas = [d[0].lemma_ for d in nlp.pipe(tokens)]
-        lemmas_by_token = dict(zip(tokens, lemmas))
+        unseen_tokens = tokens - self.lemmatized_tokens
+        unseen_tokens = list(unseen_tokens)
+        print('num tokens in batch:', len(tokens))
+        print('num unseen tokens:', len(unseen_tokens))
+        unseen_unicode_tokens = [t.decode('utf-8') for t in unseen_tokens]
+        new_lemmas = [d[0].lemma_ for d in nlp.pipe(unseen_unicode_tokens)]
+        new_lemmas_by_token = dict(zip(unseen_tokens, new_lemmas))
+        self.lemmas_by_token.update(new_lemmas_by_token)
+
+    def compute_extra_context_features(self, batch):
+        context_features = []
+
+        start = timer()
+        self.compute_lemmas(batch)
+        end = timer()
+        print('time elapsed computing lemmas:', end - start)
         for question, context in zip(batch.qn_tokens, batch.context_tokens):
             question_set = set(question)
-            question_unicode = [q.decode('utf-8') for q in question]
-            context_unicode = [c.decode('utf-8') for c in context]
-            question_lemmas = [lemmas_by_token[q] for q in question_unicode]
-            context_lemmas = [lemmas_by_token[c] for c in context_unicode]
+            question_lemmas = [self.lemmas_by_token[q] for q in question]
+            context_lemmas = [self.lemmas_by_token[c] for c in context]
             exact_match = [int(c in question_set) for c in context]
             lemma_match = [int(c in question_lemmas) for c in context_lemmas]
 
