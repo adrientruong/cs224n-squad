@@ -72,10 +72,10 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
         # Note: truncating context_ids may truncate the correct answer, meaning that it's impossible for your model to get the correct answer on this example!
         if len(qn_ids) > question_len:
             qn_ids = qn_ids[:question_len]
-	    qn_tokens = qn_tokens[:question_len]
+            qn_tokens = qn_tokens[:question_len]
         if len(context_ids) > context_len:
             context_ids = context_ids[:context_len]
-	    context_tokens = context_tokens[:context_len]
+            context_tokens = context_tokens[:context_len]
 
         # Add to list of examples
         examples.append((qn_uuid, context_tokens, context_ids, qn_tokens, qn_ids))
