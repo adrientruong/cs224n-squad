@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import unicode_literals
 
 import time
 import logging
@@ -41,7 +42,6 @@ from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
 from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn
-from collections import defaultdict
 
 from timeit import default_timer as timer
 
@@ -69,6 +69,9 @@ class QAModel(object):
         self.FLAGS = FLAGS
         self.id2word = id2word
         self.word2id = word2id
+
+        self.lemmatized_tokens = set()
+        self.lemmas_by_token = {}
 
         # Add all parts of the graph
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
@@ -131,16 +134,6 @@ class QAModel(object):
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
-
-            #make id arrays into tensors
-            c_id_tensor = tf.constant(self.context_ids)
-            q_id_tensor = tf.constant(self.self.qn_ids)
-
-
-            #find intersection:
-            tf.sets.set_intersection(c_id_tensor, q_id_tensor)
-
-
             self.context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
             pos = self.context_pos_ner[:, :, 0]
             ner = self.context_pos_ner[:, :, 1]
@@ -424,7 +417,7 @@ class QAModel(object):
         max_end_index = -1
         for i in range(len(start_dist_1d)-1, -1, -1):
             if end_dist_1d[i] > max_end or max_end_index - i > 15:
-                max_end_index = np.argmax(end_dist_1d[i:i+15])
+                max_end_index = np.argmax(end_dist_1d[i:i+15]) + i
                 max_end = end_dist_1d[max_end_index]
             best_p = start_dist_1d[i] * max_end
             list_tuples_start.append((best_p, max_end_index))
@@ -554,108 +547,6 @@ class QAModel(object):
 
         return f1_total, em_total
 
-
-
-
-def get_error_stats(self, session, context_path, qn_path, ans_path, dataset, num_samples=0, print_to_screen=False):
-    """
-    Sample from the provided (train/dev) set.
-    For each sample, calculate F1 and EM score.
-    Return average F1 and EM score for all samples.
-    Optionally pretty-print examples.
-
-    Note: This function is not quite the same as the F1/EM numbers you get from "official_eval" mode.
-    This function uses the pre-processed version of the e.g. dev set for speed,
-    whereas "official_eval" mode uses the original JSON. Therefore:
-      1. official_eval takes your max F1/EM score w.r.t. the three reference answers,
-        whereas this function compares to just the first answer (which is what's saved in the preprocessed data)
-      2. Our preprocessed version of the dev set is missing some examples
-        due to tokenization issues (see squad_preprocess.py).
-        "official_eval" includes all examples.
-
-    Inputs:
-      session: TensorFlow session
-      qn_path, context_path, ans_path: paths to {dev/train}.{question/context/answer} data files.
-      dataset: string. Either "train" or "dev". Just for logging purposes.
-      num_samples: int. How many samples to use. If num_samples=0 then do whole dataset.
-      print_to_screen: if True, pretty-prints each example to screen
-
-    Returns:
-      F1 and EM: Scalars. The average across the sampled examples.
-    """
-    logging.info("Calculating Error stats for %s examples in %s set..." % (str(num_samples) if num_samples != 0 else "all", dataset))
-
-    f1_total = 0.
-    em_total = 0.
-    example_num = 0
-
-    tic = time.time()
-
-    # Note here we select discard_long=False because we want to sample from the entire dataset
-    # That means we're truncating, rather than discarding, examples with too-long context or questions
-    first_token_qn_dict = defaultdict(float)
-    for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False):
-
-        pred_start_pos, pred_end_pos = self.get_start_end_pos(session, batch)
-
-        # Convert the start and end positions to lists length batch_size
-        pred_start_pos = pred_start_pos.tolist() # list length batch_size
-        pred_end_pos = pred_end_pos.tolist() # list length batch_size
-
-        for ex_idx, (pred_ans_start, pred_ans_end, true_ans_tokens) in enumerate(zip(pred_start_pos, pred_end_pos, batch.ans_tokens)):
-            example_num += 1
-
-            # Get the predicted answer
-            # Important: batch.context_tokens contains the original words (no UNKs)
-            # You need to use the original no-UNK version when measuring F1/EM
-            pred_ans_tokens = batch.context_tokens[ex_idx][pred_ans_start : pred_ans_end + 1]
-            pred_answer = " ".join(pred_ans_tokens)
-
-            # Get true answer (no UNKs)
-            true_answer = " ".join(true_ans_tokens)
-
-            # Calc F1/EM
-            f1 = f1_score(pred_answer, true_answer)
-            em = exact_match_score(pred_answer, true_answer)
-
-            if !em:
-                #we have found an error:
-                #get first token of error question:
-                first_token_qn = batch.qn_tokens[ex_idx][0]
-                first_token_qn_dict[first_token_qn] += 1
-
-
-            f1_total += f1
-            em_total += em
-
-            # Optionally pretty-print
-            if print_to_screen:
-                print_example(self.word2id, batch.context_tokens[ex_idx], batch.qn_tokens[ex_idx], batch.ans_span[ex_idx, 0], batch.ans_span[ex_idx, 1], pred_ans_start, pred_ans_end, true_answer, pred_answer, f1, em)
-
-            if num_samples != 0 and example_num >= num_samples:
-                break
-
-        if num_samples != 0 and example_num >= num_samples:
-            break
-
-    f1_total /= example_num
-    em_total /= example_num
-    total_qns = sum(first_token_qn_dict.itervalues())
-
-
-
-
-
-
-
-    toc = time.time()
-    logging.info("Calculating F1/EM for %i examples in %s set took %.2f seconds" % (example_num, dataset, toc-tic))
-    for token, count in sorted(first_token_qn_dict.iteritems(), key=lambda (k,v): (v,k)):
-        #key is fist token of question, value is how many times that token occurs
-        freq =(count * 1.0) /  total_qns
-        print "Frequency of %s as the first token: " % token, freq
-
-    return f1_total, em_total
 
     def train(self, session, train_context_path, train_qn_path, train_ans_path, dev_qn_path, dev_context_path, dev_ans_path):
         """
