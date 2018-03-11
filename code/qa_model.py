@@ -31,13 +31,12 @@ from tensorflow.python.ops import embedding_ops
 import spacy
 from spacy.tokens import Doc
 from preprocessing.squad_preprocess import tokenize
-nlp = spacy.load('en', disable=['parser', 'ner', 'textcat'])
+nlp = spacy.load('en', disable=['parser', 'textcat'])
 class CustomTokenizer(object):
     def __call__(self, text):
-        tokens = tokenize(text)
+        tokens = text.split('|')
         return Doc(nlp.vocab, words=tokens)
 nlp.tokenizer = CustomTokenizer()
-from spacy.lang.en import English
 
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
@@ -48,6 +47,10 @@ from timeit import default_timer as timer
 
 logging.basicConfig(level=logging.INFO)
 
+# EM + LM + NER + POS
+POS_DEPTH = 19
+NER_DEPTH = 18
+NUM_EXTRA_CONTEXT_FEATURES = 2 + POS_DEPTH + NER_DEPTH
 
 class QAModel(object):
     """Top-level Question Answering module"""
@@ -108,7 +111,8 @@ class QAModel(object):
         self.qn_ids = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
         self.qn_mask = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
         self.ans_span = tf.placeholder(tf.int32, shape=[None, 2])
-        self.extra_context_features = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, 2])
+        self.context_match = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, 2])
+        self.context_pos_ner = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, 2])
 
         # Add a placeholder to feed in the keep probability (for dropout).
         # This is necessary so that we can instruct the model to use dropout when training, but not when testing
@@ -131,11 +135,19 @@ class QAModel(object):
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
             self.context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
-            self.context_embs = tf.concat([self.context_embs, tf.cast(self.extra_context_features, tf.float32)], axis=2)
+            pos = self.context_pos_ner[:, :, 0]
+            ner = self.context_pos_ner[:, :, 1]
+            pos_one_hot = tf.one_hot(pos, POS_DEPTH, dtype=tf.float32)
+            ner_one_hot = tf.one_hot(ner, NER_DEPTH, dtype=tf.float32)
+            context_match_float = tf.cast(self.context_match, tf.float32)
+            self.context_embs = tf.concat([self.context_embs, context_match_float, pos_one_hot, ner_one_hot], axis=2)
+            print('context embs shape:', self.context_embs.shape)
+
             self.qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
 
             # need to pad because RNN encoder shares weights
-            padding = tf.constant([[0, 0], [0, 0], [0, self.extra_context_features.shape[2].value]])
+            to_pad = (self.context_embs.shape[2] - self.qn_embs.shape[2]).value
+            padding = tf.constant([[0, 0], [0, 0], [0, to_pad]])
             self.qn_embs = tf.pad(self.qn_embs, padding)
 
     def build_graph(self):
@@ -231,60 +243,26 @@ class QAModel(object):
         self.lemmas_by_token.update(new_lemmas_by_token)
 
     def compute_extra_context_features(self, batch):
-        nlp.tokenizer = CustomTokenizer()
-
-        start = timer()
-        context_features = self.new_compute_extra_context_features(batch)
-        end = timer()
-
-        nlp.tokenizer = English().Defaults.create_tokenizer(nlp)
-
-        print('time to compute features new way ', end - start)
-
-        start = timer()
-        context_features = []
-        self.compute_lemmas(batch)
-        for question, context in zip(batch.qn_tokens, batch.context_tokens):
-            question_set = set(question)
-            question_lemmas = [self.lemmas_by_token[q] for q in question]
-            context_lemmas = [self.lemmas_by_token[c] for c in context]
-            exact_match = [int(c in question_set) for c in context]
-            lemma_match = [int(c in question_lemmas) for c in context_lemmas]
-
-            # print('question:', ' '.join(question))
-            # for c, lemma, em, lm in zip(context, context_lemmas, exact_match, lemma_match):
-            #     if em == 0 and lm == 1:
-            #         print('orig:', c, 'lemma:', lemma)
-
-            # add padding
-            if len(context) < self.FLAGS.context_len:
-                to_pad = self.FLAGS.context_len - len(context)
-                exact_match.extend([0 for _ in range(to_pad)])
-                lemma_match.extend([0 for _ in range(to_pad)])
-
-            features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
-            context_features.append(features)
-        context_features = np.array(context_features)
-        end = timer()
-
-        print('time to compute features old way ', end - start)
-
-        return context_features        
-
-    def new_compute_extra_context_features(self, batch):
-        context_features = []
-        #self.compute_lemmas(batch)
-        questions = [' '.join(q) for q in batch.qn_tokens]
-        contexts = [' '.join(c) for c in batch.context_tokens]
+        match_features = []
+        pos_ner_features = []
+        questions = ['|'.join(q) for q in batch.qn_tokens]
+        contexts = ['|'.join(c) for c in batch.context_tokens]
         q_docs = nlp.pipe(questions)
         c_docs = nlp.pipe(contexts)
+        print("pipeline:", nlp.pipeline)
         for question, context, q_doc, c_doc, in zip(batch.qn_tokens, batch.context_tokens, q_docs, c_docs):
             question_set = set(question)
-            question_lemmas = [t.lemma_ for t in q_doc]
-            context_lemmas = [t.lemma_ for t in c_doc]
-            exact_match = [int(c in question_set) for c in context]
-            lemma_match = [int(c in question_lemmas) for c in context_lemmas]
-            context_pos = [t.pos_ for t in c_doc]
+            question_lemmas = set([t.lemma_ for t in q_doc])
+            matches = []
+            pos_ner = []
+            for token in c_doc:
+                exact_match = int(token.text in question_set)
+                lemma_match = int(token.lemma_ in question_lemmas)
+                pos = token.pos
+                ner = token.ent_type
+                matches.append([exact_match, lemma_match])
+                pos_ner.append([pos, ner])
+                print(token.text + '-- POS: ' + token.pos_ + ' -- NER: ' + token.ent_type_ + ' type: ' + str(token.ent_type))
             #for c, pos in zip(context, context_pos):
             #    print(c + ": " + pos)
             # print('question:', ' '.join(question))
@@ -295,14 +273,14 @@ class QAModel(object):
             # add padding
             if len(context) < self.FLAGS.context_len:
                 to_pad = self.FLAGS.context_len - len(context)
-                exact_match.extend([0 for _ in range(to_pad)])
-                lemma_match.extend([0 for _ in range(to_pad)])
+                matches.extend([[0, 0]] * to_pad)
+                pos_ner.extend([[0, 0]] * to_pad)
+            match_features.append(matches)
+            pos_ner_features.append(pos_ner)
+        match_features = np.array(match_features)
+        pos_ner_features = np.array(pos_ner_features)
 
-            features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
-            context_features.append(features)
-        context_features = np.array(context_features)
-
-        return context_features
+        return match_features, pos_ner_features
 
     def run_train_iter(self, session, batch, summary_writer):
         """
@@ -329,7 +307,9 @@ class QAModel(object):
         input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout
 
         # Calculate matches
-        input_feed[self.extra_context_features] = self.compute_extra_context_features(batch)
+        matches, pos_ner = self.compute_extra_context_features(batch)
+        input_feed[self.context_match] = matches
+        input_feed[self.context_pos_ner] = pos_ner
 
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]
@@ -361,7 +341,10 @@ class QAModel(object):
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
-        input_feed[self.extra_context_features] = self.compute_extra_context_features(batch)
+
+        matches, pos_ner = self.compute_extra_context_features(batch)
+        input_feed[self.context_match] = matches
+        input_feed[self.context_pos_ner] = pos_ner
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.loss]
@@ -386,9 +369,10 @@ class QAModel(object):
         input_feed[self.context_ids] = batch.context_ids
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
-        input_feed[self.qn_mask] = batch.qn_mask
-        input_feed[self.extra_context_features] = self.compute_extra_context_features(batch)
-        # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
+
+        matches, pos_ner = self.compute_extra_context_features(batch)
+        input_feed[self.context_match] = matches
+        input_feed[self.context_pos_ner] = pos_ner
 
         output_feed = [self.probdist_start, self.probdist_end]
         [probdist_start, probdist_end] = session.run(output_feed, input_feed)
