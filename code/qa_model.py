@@ -32,9 +32,10 @@ import spacy
 from spacy.tokens import Doc
 from preprocessing.squad_preprocess import tokenize
 nlp = spacy.load('en', disable=['parser', 'textcat'])
+TOKEN_SEPARATOR = '\xF0\x9F\x98\x81'
 class CustomTokenizer(object):
     def __call__(self, text):
-        tokens = text.split('|')
+        tokens = text.split(TOKEN_SEPARATOR)
         return Doc(nlp.vocab, words=tokens)
 nlp.tokenizer = CustomTokenizer()
 
@@ -42,6 +43,9 @@ from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
 from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn
+from collections import defaultdict
+
+
 
 from timeit import default_timer as timer
 
@@ -140,7 +144,7 @@ class QAModel(object):
             pos_one_hot = tf.one_hot(pos, POS_DEPTH, dtype=tf.float32)
             ner_one_hot = tf.one_hot(ner, NER_DEPTH, dtype=tf.float32)
             context_match_float = tf.cast(self.context_match, tf.float32)
-            self.context_embs = tf.concat([self.context_embs, context_match_float, pos_one_hot, ner_one_hot], axis=2)
+            self.context_embs = tf.concat([self.context_embs, context_match_float], axis=2)
             print('context embs shape:', self.context_embs.shape)
 
             self.qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
@@ -245,11 +249,11 @@ class QAModel(object):
     def compute_extra_context_features(self, batch):
         match_features = []
         pos_ner_features = []
-        questions = ['|'.join(q) for q in batch.qn_tokens]
-        contexts = ['|'.join(c) for c in batch.context_tokens]
+        questions = [TOKEN_SEPARATOR.join(q) for q in batch.qn_tokens]
+        contexts = [TOKEN_SEPARATOR.join(c) for c in batch.context_tokens]
         q_docs = nlp.pipe(questions)
         c_docs = nlp.pipe(contexts)
-        print("pipeline:", nlp.pipeline)
+        # print("pipeline:", nlp.pipeline)
         for question, context, q_doc, c_doc, in zip(batch.qn_tokens, batch.context_tokens, q_docs, c_docs):
             question_set = set(question)
             question_lemmas = set([t.lemma_ for t in q_doc])
@@ -262,7 +266,7 @@ class QAModel(object):
                 ner = token.ent_type
                 matches.append([exact_match, lemma_match])
                 pos_ner.append([pos, ner])
-                print(token.text + '-- POS: ' + token.pos_ + ' -- NER: ' + token.ent_type_ + ' type: ' + str(token.ent_type))
+                #print(token.text + '-- POS: ' + token.pos_ + ' -- NER: ' + token.ent_type_ + ' type: ' + str(token.ent_type))
             #for c, pos in zip(context, context_pos):
             #    print(c + ": " + pos)
             # print('question:', ' '.join(question))
@@ -369,6 +373,7 @@ class QAModel(object):
         input_feed[self.context_ids] = batch.context_ids
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
+        input_feed[self.qn_mask] = batch.qn_mask
 
         matches, pos_ner = self.compute_extra_context_features(batch)
         input_feed[self.context_match] = matches
@@ -547,7 +552,7 @@ class QAModel(object):
 
         return f1_total, em_total
 
-    def get_error_stats(self, session, context_path, qn_path, ans_path, dataset, num_samples=0, print_to_screen=False):
+    def get_error_stats(self, session, context_path, qn_path, ans_path, dataset, num_samples=10, print_to_screen=False):
         """
         Sample from the provided (train/dev) set.
         For each sample, calculate F1 and EM score.
@@ -583,7 +588,9 @@ class QAModel(object):
 
         # Note here we select discard_long=False because we want to sample from the entire dataset
         # That means we're truncating, rather than discarding, examples with too-long context or questions
-        first_token_qn_dict = defaultdict(float)
+        first_token_qn_dict_wrong = defaultdict(float)
+        first_token_qn_dict_total = defaultdict(float)
+
         for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False):
 
             pred_start_pos, pred_end_pos = self.get_start_end_pos(session, batch)
@@ -607,12 +614,13 @@ class QAModel(object):
                 # Calc F1/EM
                 f1 = f1_score(pred_answer, true_answer)
                 em = exact_match_score(pred_answer, true_answer)
-
-                if !em:
+                
+                first_token_qn = batch.qn_tokens[ex_idx][0]
+                first_token_qn_dict_total[first_token_qn] += 1
+                if not em:
                     #we have found an error:
                     #get first token of error question:
-                    first_token_qn = batch.qn_tokens[ex_idx][0]
-                    first_token_qn_dict[first_token_qn] += 1
+                    first_token_qn_dict_wrong[first_token_qn] += 1
 
 
                 f1_total += f1
@@ -630,7 +638,6 @@ class QAModel(object):
 
         f1_total /= example_num
         em_total /= example_num
-        total_qns = sum(first_token_qn_dict.itervalues())
 
 
 
@@ -640,11 +647,14 @@ class QAModel(object):
 
         toc = time.time()
         logging.info("Calculating F1/EM for %i examples in %s set took %.2f seconds" % (example_num, dataset, toc-tic))
-        for token, count in sorted(first_token_qn_dict.iteritems(), key=lambda (k,v): (v,k)):
-            #key is fist token of question, value is how many times that token occurs
-            freq =(count * 1.0) /  total_qns
-            print "Frequency of %s as the first token: " % token, freq
 
+        final_freq_dict = {}
+        for token, count in sorted(first_token_qn_dict_wrong.iteritems(), key=lambda (k,v): (v,k)):
+            #key is fist token of question, value is how many times that token occurs
+            freq =(count * 1.0) /  first_token_qn_dict_total[token]
+            final_freq_dict[token] = freq
+        for token, adj_freq in sorted(final_freq_dict.iteritems(), key=lambda (k,v): (v,k)):
+          print "First Token of question: %s, Adjusted frequency that we got wrong:" % token, adj_freq, first_token_qn_dict_total[token]
         return f1_total, em_total
 
 
