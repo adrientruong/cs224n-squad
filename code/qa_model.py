@@ -29,12 +29,22 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import embedding_ops
 
 import spacy
+from spacy.tokens import Doc
+from preprocessing.squad_preprocess import tokenize
 nlp = spacy.load('en', disable=['parser', 'ner', 'textcat'])
+class CustomTokenizer(object):
+    def __call__(self, text):
+        tokens = tokenize(text)
+        return Doc(nlp.vocab, words=tokens)
+nlp.tokenizer = CustomTokenizer()
+from spacy.lang.en import English
 
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
 from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn
+
+from timeit import default_timer as timer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -221,6 +231,17 @@ class QAModel(object):
         self.lemmas_by_token.update(new_lemmas_by_token)
 
     def compute_extra_context_features(self, batch):
+        nlp.tokenizer = CustomTokenizer()
+
+        start = timer()
+        context_features = self.new_compute_extra_context_features(batch)
+        end = timer()
+
+        nlp.tokenizer = English().Defaults.create_tokenizer(nlp)
+
+        print('time to compute features new way ', end - start)
+
+        start = timer()
         context_features = []
         self.compute_lemmas(batch)
         for question, context in zip(batch.qn_tokens, batch.context_tokens):
@@ -244,7 +265,43 @@ class QAModel(object):
             features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
             context_features.append(features)
         context_features = np.array(context_features)
-        
+        end = timer()
+
+        print('time to compute features old way ', end - start)
+
+        return context_features        
+
+    def new_compute_extra_context_features(self, batch):
+        context_features = []
+        #self.compute_lemmas(batch)
+        questions = [' '.join(q) for q in batch.qn_tokens]
+        contexts = [' '.join(c) for c in batch.context_tokens]
+        q_docs = nlp.pipe(questions)
+        c_docs = nlp.pipe(contexts)
+        for question, context, q_doc, c_doc, in zip(batch.qn_tokens, batch.context_tokens, q_docs, c_docs):
+            question_set = set(question)
+            question_lemmas = [t.lemma_ for t in q_doc]
+            context_lemmas = [t.lemma_ for t in c_doc]
+            exact_match = [int(c in question_set) for c in context]
+            lemma_match = [int(c in question_lemmas) for c in context_lemmas]
+            context_pos = [t.pos_ for t in c_doc]
+            #for c, pos in zip(context, context_pos):
+            #    print(c + ": " + pos)
+            # print('question:', ' '.join(question))
+            # for c, lemma, em, lm in zip(context, context_lemmas, exact_match, lemma_match):
+            #     if em == 0 and lm == 1:
+            #         print('orig:', c, 'lemma:', lemma)
+
+            # add padding
+            if len(context) < self.FLAGS.context_len:
+                to_pad = self.FLAGS.context_len - len(context)
+                exact_match.extend([0 for _ in range(to_pad)])
+                lemma_match.extend([0 for _ in range(to_pad)])
+
+            features = [[em, lm] for em, lm in zip(exact_match, lemma_match)]
+            context_features.append(features)
+        context_features = np.array(context_features)
+
         return context_features
 
     def run_train_iter(self, session, batch, summary_writer):
