@@ -3,7 +3,7 @@ def NER_map():
 		'',
 		'PERSON',
 		'NORP',
-		'FACILITY',
+		'FAC',
 		'ORG',
 		'GPE',
 		'LOC',
