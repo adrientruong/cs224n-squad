@@ -36,8 +36,6 @@ from data_batcher import get_batch_generator
 from pretty_print import print_example
 from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn
 
-from timeit import default_timer as timer
-
 logging.basicConfig(level=logging.INFO)
 
 
@@ -215,9 +213,8 @@ class QAModel(object):
             tokens.update(question)
             tokens.update(context)
         unseen_tokens = tokens - self.lemmatized_tokens
+        self.lemmatized_tokens.update(unseen_tokens)
         unseen_tokens = list(unseen_tokens)
-        print('num tokens in batch:', len(tokens))
-        print('num unseen tokens:', len(unseen_tokens))
         unseen_unicode_tokens = [t.decode('utf-8') for t in unseen_tokens]
         new_lemmas = [d[0].lemma_ for d in nlp.pipe(unseen_unicode_tokens)]
         new_lemmas_by_token = dict(zip(unseen_tokens, new_lemmas))
@@ -225,11 +222,7 @@ class QAModel(object):
 
     def compute_extra_context_features(self, batch):
         context_features = []
-
-        start = timer()
         self.compute_lemmas(batch)
-        end = timer()
-        print('time elapsed computing lemmas:', end - start)
         for question, context in zip(batch.qn_tokens, batch.context_tokens):
             question_set = set(question)
             question_lemmas = [self.lemmas_by_token[q] for q in question]
