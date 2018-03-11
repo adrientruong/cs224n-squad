@@ -173,6 +173,14 @@ def main(unused_argv):
 
             # Show examples with F1/EM scores
             _, _ = qa_model.check_f1_em(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", num_samples=10, print_to_screen=True)
+    elif FLAGS.mode == "show_examples_stats":
+        with tf.Session(config=config) as sess:
+
+            # Load best model
+            initialize_model(sess, qa_model, bestmodel_dir, expect_exists=True)
+
+            # Show examples with F1/EM scores
+            _, _ = qa_model.get_error_stats(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev")
 
 
     elif FLAGS.mode == "official_eval":
