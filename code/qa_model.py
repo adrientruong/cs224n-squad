@@ -167,9 +167,10 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
-        context_hiddens = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
-        question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
+        with vs.variable_scope("EmbedLayer"):
+            encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
+            context_hiddens = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
+            question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
         # Use context hidden states to attend to question hidden states
         attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
@@ -182,19 +183,28 @@ class QAModel(object):
         # Apply fully connected layer to each blended representation
         # Note, blended_reps_final corresponds to b' in the handout
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
-        blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        #blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        with vs.variable_scope("startModelLayer"):
+            modeling_layer_encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
+            m1 = modeling_layer_encoder.build_graph(blended_reps, self.context_mask)
+        with vs.variable_scope("endModelLayer"):
+            modeling_layer_encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
+            m2 = modeling_layer_encoder.build_graph(blended_reps, self.context_mask)
+
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
+            blended_reps_final_start = tf.concat([m1, blended_reps], axis=2)
             softmax_layer_start = SimpleSoftmaxLayer()
-            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(blended_reps_final, self.context_mask)
+            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(blended_reps_final_start, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
+            blended_reps_final_end  = tf.concat([m2, blended_reps], axis=2)
             softmax_layer_end = SimpleSoftmaxLayer()
-            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(blended_reps_final, self.context_mask)
+            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(blended_reps_final_end, self.context_mask)
 
 
     def add_loss(self):
@@ -617,7 +627,7 @@ class QAModel(object):
                 # Calc F1/EM
                 f1 = f1_score(pred_answer, true_answer)
                 em = exact_match_score(pred_answer, true_answer)
-                
+
                 first_token_qn = batch.qn_tokens[ex_idx][0]
                 first_token_qn_dict_total[first_token_qn] += 1
                 #print 'example_num: ', example_num
@@ -644,6 +654,7 @@ class QAModel(object):
 
         f1_total /= example_num
         em_total /= example_num
+        print 'total words: ', sum(first_token_qn_dict_total.itervalues())
 
 
 
