@@ -44,16 +44,15 @@ from data_batcher import get_batch_generator
 from pretty_print import print_example
 from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BiDAFAttn
 from collections import defaultdict
-
-
+from ner_pos_map import NER_map, POS_map
 
 from timeit import default_timer as timer
 
 logging.basicConfig(level=logging.INFO)
 
 # EM + LM + NER + POS
-POS_DEPTH = 19
-NER_DEPTH = 18
+POS_DEPTH = len(POS_map())
+NER_DEPTH = len(NER_map())
 NUM_EXTRA_CONTEXT_FEATURES = 2 + POS_DEPTH + NER_DEPTH
 
 class QAModel(object):
@@ -144,7 +143,7 @@ class QAModel(object):
             pos_one_hot = tf.one_hot(pos, POS_DEPTH, dtype=tf.float32)
             ner_one_hot = tf.one_hot(ner, NER_DEPTH, dtype=tf.float32)
             context_match_float = tf.cast(self.context_match, tf.float32)
-            self.context_embs = tf.concat([self.context_embs, context_match_float], axis=2)
+            self.context_embs = tf.concat([self.context_embs, context_match_float, pos_one_hot, ner_one_hot], axis=2)
             print('context embs shape:', self.context_embs.shape)
 
             self.qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
@@ -263,7 +262,8 @@ class QAModel(object):
         contexts = [TOKEN_SEPARATOR.join(c) for c in batch.context_tokens]
         q_docs = nlp.pipe(questions)
         c_docs = nlp.pipe(contexts)
-        # print("pipeline:", nlp.pipeline)
+        NER_labels_to_indices = NER_map()
+        POS_labels_to_indices = POS_map()
         for question, context, q_doc, c_doc, in zip(batch.qn_tokens, batch.context_tokens, q_docs, c_docs):
             question_set = set(question)
             question_lemmas = set([t.lemma_ for t in q_doc])
@@ -272,11 +272,12 @@ class QAModel(object):
             for token in c_doc:
                 exact_match = int(token.text in question_set)
                 lemma_match = int(token.lemma_ in question_lemmas)
-                pos = token.pos
-                ner = token.ent_type
+                pos = POS_labels_to_indices[token.pos_]
+                ner = NER_labels_to_indices[token.ent_type_]
                 matches.append([exact_match, lemma_match])
                 pos_ner.append([pos, ner])
                 #print(token.text + '-- POS: ' + token.pos_ + ' -- NER: ' + token.ent_type_ + ' type: ' + str(token.ent_type))
+                #print(token.text + '-- POS: ' + str(pos) + '-- NER:', str(ner))
             #for c, pos in zip(context, context_pos):
             #    print(c + ": " + pos)
             # print('question:', ' '.join(question))
