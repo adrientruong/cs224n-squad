@@ -485,7 +485,7 @@ class QAModel(object):
         return dev_loss
 
 
-    def check_f1_em(self, session, context_path, qn_path, ans_path, dataset, num_samples=100, print_to_screen=False):
+    def check_f1_em(self, session, context_path, qn_path, ans_path, dataset, num_samples=100, print_to_screen=False, first_tok=None):
         """
         Sample from the provided (train/dev) set.
         For each sample, calculate F1 and EM score.
@@ -529,7 +529,9 @@ class QAModel(object):
             pred_start_pos = pred_start_pos.tolist() # list length batch_size
             pred_end_pos = pred_end_pos.tolist() # list length batch_size
 
-            for ex_idx, (pred_ans_start, pred_ans_end, true_ans_tokens) in enumerate(zip(pred_start_pos, pred_end_pos, batch.ans_tokens)):
+            for ex_idx, (pred_ans_start, pred_ans_end, true_ans_tokens) in enumerate(zip(pred_start_pos, pred_end_pos, batch.ans_tokens)): 
+                if first_tok is not None:
+                  if (batch.qn_tokens[ex_idx][0] != first_tok): continue
                 example_num += 1
 
                 # Get the predicted answer
@@ -603,6 +605,7 @@ class QAModel(object):
         # That means we're truncating, rather than discarding, examples with too-long context or questions
         first_token_qn_dict_wrong = defaultdict(float)
         first_token_qn_dict_total = defaultdict(float)
+        first_token_qn_dict_f1 = defaultdict(float)
 
         for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False):
 
@@ -611,7 +614,6 @@ class QAModel(object):
             # Convert the start and end positions to lists length batch_size
             pred_start_pos = pred_start_pos.tolist() # list length batch_size
             pred_end_pos = pred_end_pos.tolist() # list length batch_size
-
             for ex_idx, (pred_ans_start, pred_ans_end, true_ans_tokens) in enumerate(zip(pred_start_pos, pred_end_pos, batch.ans_tokens)):
                 example_num += 1
 
@@ -630,6 +632,8 @@ class QAModel(object):
 
                 first_token_qn = batch.qn_tokens[ex_idx][0]
                 first_token_qn_dict_total[first_token_qn] += 1
+                #print 'example_num: ', example_num
+                #print 'total words seen in first_token_qn_dict: ', sum(first_token_qn_dict_total.itervalues())
                 if not em:
                     #we have found an error:
                     #get first token of error question:
@@ -637,6 +641,7 @@ class QAModel(object):
 
 
                 f1_total += f1
+                first_token_qn_dict_f1[first_token_qn] += f1 
                 em_total += em
 
                 # Optionally pretty-print
@@ -663,12 +668,14 @@ class QAModel(object):
         logging.info("Calculating F1/EM for %i examples in %s set took %.2f seconds" % (example_num, dataset, toc-tic))
 
         final_freq_dict = {}
-        for token, count in sorted(first_token_qn_dict_wrong.iteritems(), key=lambda (k,v): (v,k)):
+        for token, count in sorted(first_token_qn_dict_total.iteritems(), key=lambda (k,v): (v,k)):
             #key is fist token of question, value is how many times that token occurs
-            freq =(count * 1.0) /  first_token_qn_dict_total[token]
-            final_freq_dict[token] = freq
-        for token, adj_freq in sorted(final_freq_dict.iteritems(), key=lambda (k,v): (v,k)):
-          print "First Token of question: %s, Adjusted frequency that we got wrong:" % token, adj_freq, first_token_qn_dict_total[token]
+            freq = first_token_qn_dict_wrong[token] /  first_token_qn_dict_total[token]
+            f1 = first_token_qn_dict_f1[token] / first_token_qn_dict_total[token]
+            print "When first token is: [", token, "] f1:", f1, "We got : ", first_token_qn_dict_wrong[token], " wrong exact match out of ", first_token_qn_dict_total[token], " percentage of 1st tokens that are this token: ",  first_token_qn_dict_total[token] /  sum(first_token_qn_dict_total.itervalues()), " precentage of this token WRONG: ", freq
+
+        print('em_total:', em_total)
+        print('f1_total:', f1_total)
         return f1_total, em_total
 
 

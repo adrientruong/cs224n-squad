@@ -67,6 +67,9 @@ tf.app.flags.DEFINE_string("ckpt_load_dir", "", "For official_eval mode, which d
 tf.app.flags.DEFINE_string("json_in_path", "", "For official_eval mode, path to JSON input file. You need to specify this for official_eval_mode.")
 tf.app.flags.DEFINE_string("json_out_path", "predictions.json", "Output path for official_eval mode. Defaults to predictions.json")
 
+#Error analysis flags:
+tf.app.flags.DEFINE_integer("num_samples", 10, "How many samples to see errors of.")
+tf.app.flags.DEFINE_string("first_token", None, "First token of questions we want to see examples of.")
 
 FLAGS = tf.app.flags.FLAGS
 os.environ["CUDA_VISIBLE_DEVICES"] = str(FLAGS.gpu)
@@ -172,7 +175,7 @@ def main(unused_argv):
             initialize_model(sess, qa_model, bestmodel_dir, expect_exists=True)
 
             # Show examples with F1/EM scores
-            _, _ = qa_model.check_f1_em(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", num_samples=10, print_to_screen=True)
+            _, _ = qa_model.check_f1_em(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", num_samples=FLAGS.num_samples, print_to_screen=True, first_tok=FLAGS.first_token)
     elif FLAGS.mode == "show_examples_stats":
         with tf.Session(config=config) as sess:
 
@@ -180,7 +183,7 @@ def main(unused_argv):
             initialize_model(sess, qa_model, bestmodel_dir, expect_exists=True)
 
             # Show examples with F1/EM scores
-            _, _ = qa_model.get_error_stats(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev")
+            _, _ = qa_model.get_error_stats(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", FLAGS.num_samples)
 
 
     elif FLAGS.mode == "official_eval":
