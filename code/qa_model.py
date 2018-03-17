@@ -73,6 +73,7 @@ class QAModel(object):
         self.id2word = id2word
         self.word2id = word2id
 
+	self.emb_matrix = emb_matrix
         self.lemmatized_tokens = set()
         self.lemmas_by_token = {}
 
@@ -116,6 +117,7 @@ class QAModel(object):
         self.ans_span = tf.placeholder(tf.int32, shape=[None, 2])
         self.context_match = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, 2])
         self.context_pos_ner = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, 2])
+        self.embedding_placeholder = tf.placeholder(tf.float32, shape=[2196018, self.FLAGS.embedding_size])
 
         # Add a placeholder to feed in the keep probability (for dropout).
         # This is necessary so that we can instruct the model to use dropout when training, but not when testing
@@ -133,7 +135,8 @@ class QAModel(object):
         with vs.variable_scope("embeddings"):
 
             # Note: the embedding matrix is a tf.constant which means it's not a trainable parameter
-            embedding_matrix = tf.constant(emb_matrix, dtype=tf.float32, name="emb_matrix") # shape (400002, embedding_size)
+            #embedding_matrix = tf.constant(emb_matrix, dtype=tf.float32, name="emb_matrix") # shape (400002, embedding_size)
+            embedding_matrix = self.embedding_placeholder # shape (400002, embedding_size)
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
@@ -316,6 +319,9 @@ class QAModel(object):
         input_feed[self.context_match] = matches
         input_feed[self.context_pos_ner] = pos_ner
 
+	#feed in word embeddings(too large so have to use placeholder)
+	input_feed[self.embedding_placeholder] = self.emb_matrix
+
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]
 
@@ -350,6 +356,8 @@ class QAModel(object):
         matches, pos_ner = self.compute_extra_context_features(batch)
         input_feed[self.context_match] = matches
         input_feed[self.context_pos_ner] = pos_ner
+	#feed in word embeddings(too large so have to use placeholder)
+	input_feed[self.embedding_placeholder] = self.emb_matrix
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.loss]
@@ -380,6 +388,8 @@ class QAModel(object):
         input_feed[self.context_match] = matches
         input_feed[self.context_pos_ner] = pos_ner
 
+	#feed in word embeddings(too large so have to use placeholder)
+	input_feed[self.embedding_placeholder] = self.emb_matrix
         output_feed = [self.probdist_start, self.probdist_end]
         [probdist_start, probdist_end] = session.run(output_feed, input_feed)
         return probdist_start, probdist_end
