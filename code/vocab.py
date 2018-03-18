@@ -28,7 +28,7 @@ PAD_ID = 0
 UNK_ID = 1
 
 
-def get_glove(glove_path, glove_dim):
+def get_glove(glove_path, glove_dim, v_s = 4e5):
     """Reads from original GloVe .txt file and returns embedding matrix and
     mappings from words to word ids.
 
@@ -45,7 +45,7 @@ def get_glove(glove_path, glove_dim):
     """
 
     print "Loading GLoVE vectors from file: %s" % glove_path
-    vocab_size = int(2196016) # this is the vocab size of the corpus we've downloaded
+    vocab_size = int(v_s) # this is the vocab size of the corpus we've downloaded
 
     emb_matrix = np.zeros((vocab_size + len(_START_VOCAB), glove_dim))
     word2id = {}

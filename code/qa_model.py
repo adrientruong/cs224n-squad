@@ -74,6 +74,7 @@ class QAModel(object):
         self.word2id = word2id
 
 	self.emb_matrix = emb_matrix
+        self.vocab_size = len(emb_matrix)
         self.lemmatized_tokens = set()
         self.lemmas_by_token = {}
 
@@ -117,7 +118,7 @@ class QAModel(object):
         self.ans_span = tf.placeholder(tf.int32, shape=[None, 2])
         self.context_match = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, 2])
         self.context_pos_ner = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, 2])
-        self.embedding_placeholder = tf.placeholder(tf.float32, shape=[2196018, self.FLAGS.embedding_size])
+        self.embedding_placeholder = tf.placeholder(tf.float32, shape=[self.vocab_size, self.FLAGS.embedding_size])
 
         # Add a placeholder to feed in the keep probability (for dropout).
         # This is necessary so that we can instruct the model to use dropout when training, but not when testing

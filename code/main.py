@@ -42,6 +42,7 @@ tf.app.flags.DEFINE_integer("gpu", 0, "Which GPU to use, if you have multiple.")
 tf.app.flags.DEFINE_string("mode", "train", "Available modes: train / show_examples / official_eval")
 tf.app.flags.DEFINE_string("experiment_name", "", "Unique name for your experiment. This will create a directory by this name in the experiments/ directory, which will hold all data related to this experiment")
 tf.app.flags.DEFINE_integer("num_epochs", 0, "Number of epochs to train. 0 means train indefinitely")
+tf.app.flags.DEFINE_integer("bigger_word_vectors", 0, "If greater than 0, bigger word vectors used, assumed to be at glove_path")
 
 # Hyperparameters
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
@@ -122,10 +123,15 @@ def main(unused_argv):
     bestmodel_dir = os.path.join(FLAGS.train_dir, "best_checkpoint")
 
     # Define path for glove vecs
-    FLAGS.glove_path = FLAGS.glove_path or os.path.join(DEFAULT_DATA_DIR, "glove.840B.{}d.txt".format(FLAGS.embedding_size))
+    FLAGS.glove_path = FLAGS.glove_path or os.path.join(DEFAULT_DATA_DIR, "glove.6B.{}d.txt".format(FLAGS.embedding_size))
 
     # Load embedding matrix and vocab mappings
-    emb_matrix, word2id, id2word = get_glove(FLAGS.glove_path, FLAGS.embedding_size)
+    if(FLAGS.bigger_word_vectors > 0):
+	FLAGS.embedding_size = 300
+        FLAGS.glove_path = os.path.join(DEFAULT_DATA_DIR, "glove.840B.{}d.txt".format(FLAGS.embedding_size))
+    	emb_matrix, word2id, id2word = get_glove(FLAGS.glove_path, FLAGS.embedding_size, 2196016)
+    else:
+	emb_matrix, word2id, id2word = get_glove(FLAGS.glove_path, FLAGS.embedding_size)
 
     # Get filepaths to train/dev datafiles for tokenized queries, contexts and answers
     train_context_path = os.path.join(FLAGS.data_dir, "train.context")
