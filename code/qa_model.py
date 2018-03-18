@@ -178,8 +178,8 @@ class QAModel(object):
 
         # Use context hidden states to attend to question hidden states
         attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
-        _, a, c = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask) # attn_output is shape (batch_size, context_len, hidden_size*2)
-
+        alpha, a, c = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask) # attn_output is shape (batch_size, context_len, hidden_size*2)
+	self.alpha_dist = alpha
         # Concat attn_output to context_hiddens to get blended_reps
         c = tf.expand_dims(c, 1)
         blended_reps = tf.concat([context_hiddens, a, context_hiddens * a, context_hiddens * c], axis=2) # (batch_size, context_len, hidden_size*4)
@@ -194,7 +194,6 @@ class QAModel(object):
         with vs.variable_scope("endModelLayer"):
             modeling_layer_encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
             m2 = modeling_layer_encoder.build_graph(blended_reps, self.context_mask)
-
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
@@ -401,9 +400,9 @@ class QAModel(object):
 
 	#feed in word embeddings(too large so have to use placeholder)
 	input_feed[self.embedding_placeholder] = self.emb_matrix
-        output_feed = [self.probdist_start, self.probdist_end]
-        [probdist_start, probdist_end] = session.run(output_feed, input_feed)
-        return probdist_start, probdist_end
+        output_feed = [self.probdist_start, self.probdist_end, self.alpha_dist]
+        [probdist_start, probdist_end, alpha_dist] = session.run(output_feed, input_feed)
+        return probdist_start, probdist_end, alpha_dist
 
 
     def get_start_end_pos(self, session, batch):
@@ -419,9 +418,22 @@ class QAModel(object):
             The most likely start and end positions for each example in the batch.
         """
         # Get start_dist and end_dist, both shape (batch_size, context_len)
-        start_dists, end_dists = self.get_prob_dists(session, batch)
+        start_dists, end_dists, alpha_dists = self.get_prob_dists(session, batch)
         start_pos = []
         end_pos = []
+	
+	for batch_index, _ in enumerate(alpha_dists):
+	    for context_index, _ in enumerate(alpha_dists[0]):
+		for qn_index, _ in enumerate(alpha_dists[0][0]):
+                   context_mask = batch.context_mask[batch_index][context_index] 
+		   if context_mask:
+                   	context_tkn = batch.context_tokens[batch_index][context_index]
+		   	qn_mask = batch.qn_mask[batch_index][qn_index]
+			if qn_mask:
+		   		qn_tkn = batch.qn_tokens[batch_index][qn_index]
+		   		alpha_value = alpha_dists[batch_index][context_index][qn_index]
+		   		print 'context_token: ', context_tkn, 'qn_tkn:', qn_tkn, 'alpha:', alpha_value
+                  
         for  start_dist, end_dist in zip(start_dists, end_dists):
             best_start, best_end = self.get_start_end_pos_single_example(start_dist, end_dist)
             start_pos.append(best_start)
@@ -499,7 +511,7 @@ class QAModel(object):
         Sample from the provided (train/dev) set.
         For each sample, calculate F1 and EM score.
         Return average F1 and EM score for all samples.
-        Optionally pretty-print examples.
+
 
         Note: This function is not quite the same as the F1/EM numbers you get from "official_eval" mode.
         This function uses the pre-processed version of the e.g. dev set for speed,
