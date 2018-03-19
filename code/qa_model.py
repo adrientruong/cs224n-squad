@@ -421,17 +421,35 @@ class QAModel(object):
         start_dists, end_dists, alpha_dists = self.get_prob_dists(session, batch)
         start_pos = []
         end_pos = []
-    
-        for batch_index, _ in enumerate(alpha_dists):
-            for context_index, _ in enumerate(alpha_dists[0]):
-                for qn_index, _ in enumerate(alpha_dists[0][0]):
-                    context_mask = batch.context_mask[batch_index][context_index] 
+
+        for batch_index in range(alpha_dists.shape[0]):
+            for context_index in range(alpha_dists.shape[1]):
+                context_mask = batch.context_mask[batch_index][context_index]
+                if not context_mask:
+                    continue
+
+                context_tkn = batch.context_tokens[batch_index][context_index]
+                for qn_index in range(alpha_dists.shape[2]):
                     qn_mask = batch.qn_mask[batch_index][qn_index]
-                    if context_mask and qn_mask:
-                        context_tkn = batch.context_tokens[batch_index][context_index]
-                        qn_tkn = batch.qn_tokens[batch_index][qn_index]
-                        alpha_value = alpha_dists[batch_index][context_index][qn_index]
-                        print 'context_token: ', context_tkn, 'qn_tkn:', qn_tkn, 'alpha:', alpha_value
+                    if not qn_mask:
+                        continue
+
+                    alpha_value = alpha_dists[batch_index][context_index][qn_index]
+                    print 'context_token: ', context_tkn, 'qn_tkn:', qn_tkn, 'alpha:', alpha_value
+                print('*' * 50)
+            print('-' * 50)
+            print('-' * 50)
+    
+        # for batch_index, _ in enumerate(alpha_dists):
+        #     for context_index, _ in enumerate(alpha_dists[0]):
+        #         for qn_index, _ in enumerate(alpha_dists[0][0]):
+        #             context_mask = batch.context_mask[batch_index][context_index] 
+        #             qn_mask = batch.qn_mask[batch_index][qn_index]
+        #             if context_mask and qn_mask:
+        #                 context_tkn = batch.context_tokens[batch_index][context_index]
+        #                 qn_tkn = batch.qn_tokens[batch_index][qn_index]
+        #                 alpha_value = alpha_dists[batch_index][context_index][qn_index]
+        #                 print 'context_token: ', context_tkn, 'qn_tkn:', qn_tkn, 'alpha:', alpha_value
                   
         for start_dist, end_dist in zip(start_dists, end_dists):
             best_start, best_end = self.get_start_end_pos_single_example(start_dist, end_dist)
