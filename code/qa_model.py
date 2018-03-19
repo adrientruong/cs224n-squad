@@ -73,7 +73,7 @@ class QAModel(object):
         self.id2word = id2word
         self.word2id = word2id
 
-	self.emb_matrix = emb_matrix
+        self.emb_matrix = emb_matrix
         self.vocab_size = len(emb_matrix)
         self.lemmatized_tokens = set()
         self.lemmas_by_token = {}
@@ -179,7 +179,7 @@ class QAModel(object):
         # Use context hidden states to attend to question hidden states
         attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
         alpha, a, c = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask) # attn_output is shape (batch_size, context_len, hidden_size*2)
-	self.alpha_dist = alpha
+        self.alpha_dist = alpha
         # Concat attn_output to context_hiddens to get blended_reps
         c = tf.expand_dims(c, 1)
         blended_reps = tf.concat([context_hiddens, a, context_hiddens * a, context_hiddens * c], axis=2) # (batch_size, context_len, hidden_size*4)
@@ -329,8 +329,8 @@ class QAModel(object):
         input_feed[self.context_match] = matches
         input_feed[self.context_pos_ner] = pos_ner
 
-	#feed in word embeddings(too large so have to use placeholder)
-	input_feed[self.embedding_placeholder] = self.emb_matrix
+        #feed in word embeddings(too large so have to use placeholder)
+        input_feed[self.embedding_placeholder] = self.emb_matrix
 
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]
@@ -366,8 +366,8 @@ class QAModel(object):
         matches, pos_ner = self.compute_extra_context_features(batch)
         input_feed[self.context_match] = matches
         input_feed[self.context_pos_ner] = pos_ner
-	#feed in word embeddings(too large so have to use placeholder)
-	input_feed[self.embedding_placeholder] = self.emb_matrix
+        #feed in word embeddings(too large so have to use placeholder)
+        input_feed[self.embedding_placeholder] = self.emb_matrix
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.loss]
@@ -398,8 +398,8 @@ class QAModel(object):
         input_feed[self.context_match] = matches
         input_feed[self.context_pos_ner] = pos_ner
 
-	#feed in word embeddings(too large so have to use placeholder)
-	input_feed[self.embedding_placeholder] = self.emb_matrix
+        #feed in word embeddings(too large so have to use placeholder)
+        input_feed[self.embedding_placeholder] = self.emb_matrix
         output_feed = [self.probdist_start, self.probdist_end, self.alpha_dist]
         [probdist_start, probdist_end, alpha_dist] = session.run(output_feed, input_feed)
         return probdist_start, probdist_end, alpha_dist
@@ -421,20 +421,19 @@ class QAModel(object):
         start_dists, end_dists, alpha_dists = self.get_prob_dists(session, batch)
         start_pos = []
         end_pos = []
-	
-	for batch_index, _ in enumerate(alpha_dists):
-	    for context_index, _ in enumerate(alpha_dists[0]):
-		for qn_index, _ in enumerate(alpha_dists[0][0]):
-                   context_mask = batch.context_mask[batch_index][context_index] 
-		   if context_mask:
-                   	context_tkn = batch.context_tokens[batch_index][context_index]
-		   	qn_mask = batch.qn_mask[batch_index][qn_index]
-			if qn_mask:
-		   		qn_tkn = batch.qn_tokens[batch_index][qn_index]
-		   		alpha_value = alpha_dists[batch_index][context_index][qn_index]
-		   		print 'context_token: ', context_tkn, 'qn_tkn:', qn_tkn, 'alpha:', alpha_value
+    
+        for batch_index, _ in enumerate(alpha_dists):
+            for context_index, _ in enumerate(alpha_dists[0]):
+                for qn_index, _ in enumerate(alpha_dists[0][0]):
+                    context_mask = batch.context_mask[batch_index][context_index] 
+                    qn_mask = batch.qn_mask[batch_index][qn_index]
+                    if context_mask and qn_mask:
+                        context_tkn = batch.context_tokens[batch_index][context_index]
+                        qn_tkn = batch.qn_tokens[batch_index][qn_index]
+                        alpha_value = alpha_dists[batch_index][context_index][qn_index]
+                        print 'context_token: ', context_tkn, 'qn_tkn:', qn_tkn, 'alpha:', alpha_value
                   
-        for  start_dist, end_dist in zip(start_dists, end_dists):
+        for start_dist, end_dist in zip(start_dists, end_dists):
             best_start, best_end = self.get_start_end_pos_single_example(start_dist, end_dist)
             start_pos.append(best_start)
             end_pos.append(best_end)
@@ -443,12 +442,7 @@ class QAModel(object):
         start_pos = np.array(start_pos, dtype= np.int64)
         end_pos = np.array(end_pos, dtype= np.int64)
 
-
-
         return start_pos, end_pos
-
-
-
 
     def get_start_end_pos_single_example(self, start_dist_1d, end_dist_1d):
         list_tuples_start = []
