@@ -405,6 +405,22 @@ class QAModel(object):
         [probdist_start, probdist_end, alpha_dist, beta_dist] = session.run(output_feed, input_feed)
         return probdist_start, probdist_end, alpha_dist, beta_dist
 
+    def get_start_end_pos_and_attention(self, session, batch):
+        start_dists, end_dists, alpha_dists, beta_dists = self.get_prob_dists(session, batch)
+        start_pos = []
+        end_pos = []
+
+
+        for start_dist, end_dist in zip(start_dists, end_dists):
+            best_start, best_end = self.get_start_end_pos_single_example(start_dist, end_dist)
+            start_pos.append(best_start)
+            end_pos.append(best_end)
+        # Take argmax to get start_pos and end_post, both shape (batch_size)
+
+        start_pos = np.array(start_pos, dtype= np.int64)
+        end_pos = np.array(end_pos, dtype= np.int64)
+
+        return start_pos, end_pos, alpha_dists, beta_dists
 
     def get_start_end_pos(self, session, batch):
         """
@@ -426,8 +442,8 @@ class QAModel(object):
         for batch_index in range(beta_dists.shape[0]):
             for context_index in range(beta_dists.shape[1]):
                 context_mask = batch.context_mask[batch_index][context_index]
-                context_token = batch.context_tokens[batch_index][context_index]
                 if context_mask:
+                    context_token = batch.context_tokens[batch_index][context_index]
                     print 'Context token:', context_token, 'beta: ', beta_dists[batch_index][context_index]
             print('-' * 50)
 
@@ -594,6 +610,91 @@ class QAModel(object):
                 # Optionally pretty-print
                 if print_to_screen:
                     print_example(self.word2id, batch.context_tokens[ex_idx], batch.qn_tokens[ex_idx], batch.ans_span[ex_idx, 0], batch.ans_span[ex_idx, 1], pred_ans_start, pred_ans_end, true_answer, pred_answer, f1, em)
+
+                if num_samples != 0 and example_num >= num_samples:
+                    break
+
+            if num_samples != 0 and example_num >= num_samples:
+                break
+
+        f1_total /= example_num
+        em_total /= example_num
+
+        toc = time.time()
+        logging.info("Calculating F1/EM for %i examples in %s set took %.2f seconds" % (example_num, dataset, toc-tic))
+
+        return f1_total, em_total
+
+
+    def visualize_attention(self, session, context_path, qn_path, ans_path, dataset, num_samples=100, print_to_screen=False, first_tok=None):
+        logging.info("Calculating F1/EM for %s examples in %s set..." % (str(num_samples) if num_samples != 0 else "all", dataset))
+
+        f1_total = 0.
+        em_total = 0.
+        example_num = 0
+
+        tic = time.time()
+
+        # Note here we select discard_long=False because we want to sample from the entire dataset
+        # That means we're truncating, rather than discarding, examples with too-long context or questions
+        for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False):
+
+            pred_start_pos, pred_end_pos, c2q_attention, q2c_attention = self.get_start_end_pos_and_attention(session, batch)
+
+            # Convert the start and end positions to lists length batch_size
+            pred_start_pos = pred_start_pos.tolist() # list length batch_size
+            pred_end_pos = pred_end_pos.tolist() # list length batch_size
+
+            for ex_idx, (pred_ans_start, pred_ans_end, true_ans_tokens) in enumerate(zip(pred_start_pos, pred_end_pos, batch.ans_tokens)): 
+                if first_tok is not None:
+                  if (batch.qn_tokens[ex_idx][0] != first_tok): continue
+                example_num += 1
+
+                # Get the predicted answer
+                # Important: batch.context_tokens contains the original words (no UNKs)
+                # You need to use the original no-UNK version when measuring F1/EM
+                pred_ans_tokens = batch.context_tokens[ex_idx][pred_ans_start : pred_ans_end + 1]
+                pred_answer = " ".join(pred_ans_tokens)
+
+                # Get true answer (no UNKs)
+                true_answer = " ".join(true_ans_tokens)
+
+                # Calc F1/EM
+                f1 = f1_score(pred_answer, true_answer)
+                em = exact_match_score(pred_answer, true_answer)
+                f1_total += f1
+                em_total += em
+
+                # Optionally pretty-print
+                if print_to_screen:
+                    print_example(self.word2id, batch.context_tokens[ex_idx], batch.qn_tokens[ex_idx], batch.ans_span[ex_idx, 0], batch.ans_span[ex_idx, 1], pred_ans_start, pred_ans_end, true_answer, pred_answer, f1, em)
+
+                    c2q = c2q_attention[ex_idx]
+                    q2c = q2c_attention[ex_idx]
+                    threshold = 0.01
+                    context_mask = batch.context_mask[ex_idx]
+                    important_context_tokens = []
+                    for i_c, context_token in enumerate(batch.context_tokens[ex_idx]):
+                        if not context_mask[i]:
+                            continue
+
+                        question_attention = c2q[i_c]
+                        important_question_tokens = []
+                        question_mask = batch.question_mask[ex_idx]
+                        for question_token, q_mask, alpha in zip(batch.qn_tokens[ex_idx], question_mask, question_attention):
+                            if not q_mask:
+                                continue
+                            if alpha > threshold:
+                                important_question_tokens.append((question_token, alpha))
+
+                        print(context_token, important_question_tokens)
+
+                        beta = q2c[i_c]
+                        if beta > threshold:
+                            important_context_tokens.append((context_token, beta))
+
+                    print('Context tokens paid attention to by question:')
+                    print(important_context_tokens)
 
                 if num_samples != 0 and example_num >= num_samples:
                     break

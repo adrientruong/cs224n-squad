@@ -191,7 +191,15 @@ def main(unused_argv):
             # Show examples with F1/EM scores
             _, _ = qa_model.get_error_stats(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", FLAGS.num_samples)
 
+    elif FLAGS.mode == "attention":
+         with tf.Session(config=config) as sess:
 
+            # Load best model
+            initialize_model(sess, qa_model, bestmodel_dir, expect_exists=True)
+
+            # Show examples with F1/EM scores
+            _, _ = qa_model.visualize_attention(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", FLAGS.num_samples)
+        
     elif FLAGS.mode == "official_eval":
         if FLAGS.json_in_path == "":
             raise Exception("For official_eval mode, you need to specify --json_in_path")
