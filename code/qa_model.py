@@ -188,25 +188,22 @@ class QAModel(object):
         # Note, blended_reps_final corresponds to b' in the handout
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
         #blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
-        with vs.variable_scope("startModelLayer"):
+        with vs.variable_scope("ModelLayer"):
             modeling_layer_encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
-            m1 = modeling_layer_encoder.build_graph(blended_reps, self.context_mask)
-        with vs.variable_scope("endModelLayer"):
-            modeling_layer_encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
-            m2 = modeling_layer_encoder.build_graph(blended_reps, self.context_mask)
+            m = modeling_layer_encoder.build_graph(blended_reps, self.context_mask)
 
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
-            blended_reps_final_start = tf.concat([m1, blended_reps], axis=2)
+            blended_reps_final_start = tf.concat([m, blended_reps], axis=2)
             softmax_layer_start = SimpleSoftmaxLayer()
             self.logits_start, self.probdist_start = softmax_layer_start.build_graph(blended_reps_final_start, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
-            blended_reps_final_end  = tf.concat([m2, blended_reps], axis=2)
+            blended_reps_final_end  = tf.concat([m, blended_reps], axis=2)
             softmax_layer_end = SimpleSoftmaxLayer()
             self.logits_end, self.probdist_end = softmax_layer_end.build_graph(blended_reps_final_end, self.context_mask)
 
