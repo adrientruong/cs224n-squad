@@ -245,7 +245,7 @@ class BiDAFAttn(object):
             # Apply dropout
             values_output = tf.nn.dropout(values_output, self.keep_prob)
 
-            return alpha, values_output, key_output
+            return alpha, values_output, beta, key_output
 
 
 def masked_softmax(logits, mask, dim):

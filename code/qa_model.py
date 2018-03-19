@@ -178,8 +178,9 @@ class QAModel(object):
 
         # Use context hidden states to attend to question hidden states
         attn_layer = BiDAFAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
-        alpha, a, c = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask) # attn_output is shape (batch_size, context_len, hidden_size*2)
+        alpha, a, beta, c = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask) # attn_output is shape (batch_size, context_len, hidden_size*2)
         self.alpha_dist = alpha
+        self.beta_dist = beta
         # Concat attn_output to context_hiddens to get blended_reps
         c = tf.expand_dims(c, 1)
         blended_reps = tf.concat([context_hiddens, a, context_hiddens * a, context_hiddens * c], axis=2) # (batch_size, context_len, hidden_size*4)
@@ -400,9 +401,9 @@ class QAModel(object):
 
         #feed in word embeddings(too large so have to use placeholder)
         input_feed[self.embedding_placeholder] = self.emb_matrix
-        output_feed = [self.probdist_start, self.probdist_end, self.alpha_dist]
-        [probdist_start, probdist_end, alpha_dist] = session.run(output_feed, input_feed)
-        return probdist_start, probdist_end, alpha_dist
+        output_feed = [self.probdist_start, self.probdist_end, self.alpha_dist, self.beta_dist]
+        [probdist_start, probdist_end, alpha_dist, beta_dist] = session.run(output_feed, input_feed)
+        return probdist_start, probdist_end, alpha_dist, beta_dist
 
 
     def get_start_end_pos(self, session, batch):
@@ -418,27 +419,35 @@ class QAModel(object):
             The most likely start and end positions for each example in the batch.
         """
         # Get start_dist and end_dist, both shape (batch_size, context_len)
-        start_dists, end_dists, alpha_dists = self.get_prob_dists(session, batch)
+        start_dists, end_dists, alpha_dists, beta_dists = self.get_prob_dists(session, batch)
         start_pos = []
         end_pos = []
 
-        for batch_index in range(alpha_dists.shape[0]):
-            for context_index in range(alpha_dists.shape[1]):
+        for batch_index in range(beta_dists.shape[0]):
+            for context_index in range(beta_dists.shape[1]):
                 context_mask = batch.context_mask[batch_index][context_index]
-                if not context_mask:
-                    continue
-
-                context_tkn = batch.context_tokens[batch_index][context_index]
-                for qn_index in range(alpha_dists.shape[2]):
-                    qn_mask = batch.qn_mask[batch_index][qn_index]
-                    if not qn_mask:
-                        continue
-
-                    alpha_value = alpha_dists[batch_index][context_index][qn_index]
-                    print 'context_token: ', context_tkn, 'qn_tkn:', qn_tkn, 'alpha:', alpha_value
-                print('*' * 50)
+                context_token = batch.context_tokens[batch_index][context_index]
+                if context_mask:
+                    print 'Context token:', context_token, 'beta: ', beta_dists[batch_index][context_index]
             print('-' * 50)
-            print('-' * 50)
+
+        # for batch_index in range(alpha_dists.shape[0]):
+        #     for context_index in range(alpha_dists.shape[1]):
+        #         context_mask = batch.context_mask[batch_index][context_index]
+        #         if not context_mask:
+        #             continue
+
+        #         context_tkn = batch.context_tokens[batch_index][context_index]
+        #         for qn_index in range(alpha_dists.shape[2]):
+        #             qn_mask = batch.qn_mask[batch_index][qn_index]
+        #             if not qn_mask:
+        #                 continue
+
+        #             alpha_value = alpha_dists[batch_index][context_index][qn_index]
+        #             print 'context_token: ', context_tkn, 'qn_tkn:', qn_tkn, 'alpha:', alpha_value
+        #         print('*' * 50)
+        #     print('-' * 50)
+        #     print('-' * 50)
     
         # for batch_index, _ in enumerate(alpha_dists):
         #     for context_index, _ in enumerate(alpha_dists[0]):
