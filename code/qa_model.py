@@ -242,8 +242,14 @@ class QAModel(object):
             self.loss_end = tf.reduce_mean(loss_end)
             tf.summary.scalar('loss_end', self.loss_end)
 
+ 	    #add regularization:
+	    vars_train = tf.trainable_variables()
+            non_bias_terms = [v for v in vars_train if 'bias' not in v.name]
+            regularizer = tf.add_n([tf.nn.l2_loss(v) for v in non_bias_terms]) * self.FLAGS.reg_constant
+            
+
             # Add the two losses
-            self.loss = self.loss_start + self.loss_end
+            self.loss = self.loss_start + self.loss_end + regularizer
             tf.summary.scalar('loss', self.loss)
 
     def compute_lemmas(self, batch):
