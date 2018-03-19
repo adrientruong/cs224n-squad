@@ -228,7 +228,7 @@ class BiDAFAttn(object):
             S = tf.expand_dims(keys_dot, 2) + tf.expand_dims(values_dot, 1) + key_value_mul_dot
 
             attn_c2q_mask = tf.expand_dims(values_mask, 1)
-            _, alpha = masked_softmax(S, attn_c2q_mask, 1)
+            _, alpha = masked_softmax(S, attn_c2q_mask, 2)
 
             # (B x N x 2H) = (B x N x M) (B x M x 2H)
             values_output = tf.matmul(alpha, values)
