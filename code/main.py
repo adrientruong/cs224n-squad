@@ -198,7 +198,7 @@ def main(unused_argv):
             initialize_model(sess, qa_model, bestmodel_dir, expect_exists=True)
 
             # Show examples with F1/EM scores
-            _, _ = qa_model.visualize_attention(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", FLAGS.num_samples)
+            _, _ = qa_model.visualize_attention(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", FLAGS.num_samples, print_to_screen=True)
         
     elif FLAGS.mode == "official_eval":
         if FLAGS.json_in_path == "":

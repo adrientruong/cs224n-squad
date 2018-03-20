@@ -444,8 +444,8 @@ class QAModel(object):
                 context_mask = batch.context_mask[batch_index][context_index]
                 if context_mask:
                     context_token = batch.context_tokens[batch_index][context_index]
-                    print 'Context token:', context_token, 'beta: ', beta_dists[batch_index][context_index]
-            print('-' * 50)
+                    #print 'Context token:', context_token, 'beta: ', beta_dists[batch_index][context_index]
+            #print('-' * 50)
 
         # for batch_index in range(alpha_dists.shape[0]):
         #     for context_index in range(alpha_dists.shape[1]):
@@ -675,12 +675,12 @@ class QAModel(object):
                     context_mask = batch.context_mask[ex_idx]
                     important_context_tokens = []
                     for i_c, context_token in enumerate(batch.context_tokens[ex_idx]):
-                        if not context_mask[i]:
+                        if not context_mask[i_c]:
                             continue
 
                         question_attention = c2q[i_c]
                         important_question_tokens = []
-                        question_mask = batch.question_mask[ex_idx]
+                        question_mask = batch.qn_mask[ex_idx]
                         for question_token, q_mask, alpha in zip(batch.qn_tokens[ex_idx], question_mask, question_attention):
                             if not q_mask:
                                 continue
